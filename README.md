@@ -1,3 +1,3 @@
 moonstone
 =========
-Dk WebGl Framework moonstone
+Dk WebGL Framework moonstone
