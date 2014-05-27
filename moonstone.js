@@ -3,7 +3,12 @@
  */
 
 (function(){
-    var W = window, Doc = document, Head = Doc.getElementsByTagName( "head" )[ 0 ], DkGl, Detector, _core;
+    var W = window, Doc = document, Head = Doc.getElementsByTagName( "head" )[ 0 ],
+        DkGl, Detector, _core,
+        _gl, _canvas,
+        _vsObj, _fsObj, _programObj,
+        _posVBO, _indexVBO, _textureVBO,
+        _mtrP, _mtrMV;
 
     //----------------------------------------------------------------------------------------------------------------------------------------------//
     // DkGl
@@ -157,7 +162,7 @@
         //----------------------------------------------------------------------------------------------------------------------------------------------//
         // log
         (function(){
-            if( W.log ) return W.log( "log가 이미 존재합니다." );
+            if( W.log ) return W.log( "DkGl : log가 이미 존재합니다." );
             var log, logArr = [], cr = _core, cJoin = cr.join, e0, e1, toggle, x = 710, y = 10, w = 800;
 
             e0 = Doc.createElement( "div" ),
@@ -192,11 +197,190 @@
         //----------------------------------------------------------------------------------------------------------------------------------------------//
         // init
         (function(){
-            DkGl.init = function( $callBack ){
+            DkGl.init = function( $id, $shader, $callBack ){
                 _core.addEvent( Doc, "DOMContentLoaded", function(){
-                    // todo gl init
-                    $callBack();
+                    DkGl.loader.text( $shader, function( $data ){
+                        Head.innerHTML += $data,
+
+                            initCanvas( $id ),
+                            initGl(),
+                            initShader(),
+                            initBuffer(),
+                            initMatrix(),
+
+                            resize(),
+                            DkGl.Resize.add( "DkGl", resize ),
+                            DkGl.Loop.add( "DkGl", render ),
+                            $callBack();
+                    } );
                 } );
+            }
+
+            //----------------------------------------------------------------------------------------------------------------------------------------------//
+            // canvas
+            function initCanvas( $id ){
+                DkGl.canvas = _canvas = Doc.getElementById( $id );
+            }
+
+            //----------------------------------------------------------------------------------------------------------------------------------------------//
+            // gl
+            function initGl(){
+                DkGl.gl = _gl = _canvas.getContext( "webgl" ) || _canvas.getContext( "experimental-webgl" ) || _canvas.getContext( "webkit-3d" ) || _canvas.getContext( "moz-webgl" );
+
+                if( _gl ) _gl.enable( _gl.DEPTH_TEST );
+                else throw new Error( "DkGl : 이 브라우저에서는 WebGL은 사용이 불가능 합니다." );
+            }
+
+            //----------------------------------------------------------------------------------------------------------------------------------------------//
+            // shader
+            function initShader(){
+                _vsObj = {}, _fsObj = {}, _programObj = {};
+
+                // color
+                _programObj.color = makeProgram( "shader-vs-color", "shader-fs-color", [ "aVertexPosition" ], [ "uMatrixP", "uMatrixMV", "uColor" ] );
+            }
+
+            function makeProgram( $vs, $fs, $aArr, $uArr ){
+                var verSd, fragSd, prg, i, aStr, uStr;
+                verSd = _vsObj[ $vs ] ? _vsObj[ $vs ] : getShader( $vs ),
+                    fragSd = _fsObj[ $fs ] ? _fsObj[ $fs ] : getShader( $fs ),
+
+                    prg = _gl.createProgram(),
+                    _gl.attachShader( prg, verSd ),
+                    _gl.attachShader( prg, fragSd ),
+                    _gl.linkProgram( prg );
+
+                if( !_gl.getProgramParameter( prg, _gl.LINK_STATUS ) )
+                    throw new Error( "DkGl : 쉐이더 초기화에 실패하였습니다" );
+
+                _gl.useProgram( prg );
+
+                i = $aArr.length;
+                while( i-- ){
+                    aStr = $aArr[ i ];
+                    prg[ aStr ] = _gl.getAttribLocation( prg, aStr );
+                    _gl.enableVertexAttribArray( prg[ aStr ] );
+                }
+
+                i = $uArr.length;
+                while( i-- ){
+                    uStr = $uArr[ i ];
+                    prg[ uStr ] = _gl.getUniformLocation( prg, uStr );
+                }
+
+                return prg;
+            }
+
+            function getShader( $id ){
+                var sdScrt, str = "", node, shader, type;
+                sdScrt = document.getElementById( $id );
+                if( !sdScrt ) return null;
+
+                node = sdScrt.firstChild;
+                while( node )
+                    node.nodeType == 3 ? str += node.textContent : null, node = node.nextSibling;
+
+                type = sdScrt.type;
+                if( type == "x-shader/x-vertex" )
+                    shader = _gl.createShader( _gl.VERTEX_SHADER );
+                else if( type == "x-shader/x-fragment" )
+                    shader = _gl.createShader( _gl.FRAGMENT_SHADER );
+                else
+                    return null;
+
+                _gl.shaderSource( shader, str ),
+                    _gl.compileShader( shader );
+
+                if( !_gl.getShaderParameter( shader, _gl.COMPILE_STATUS ) ){
+                    throw new Error( _gl.getShaderInfoLog( shader ) );
+                    return null;
+                }
+
+                if( type == "x-shader/x-vertex" )
+                    _vsObj[ $id ] = shader;
+                else if( type == "x-shader/x-fragment" )
+                    _fsObj[ $id ] = shader;
+
+                return shader;
+            }
+
+            //----------------------------------------------------------------------------------------------------------------------------------------------//
+            // buffer
+            function initBuffer(){
+                var posData, indexData, textureData;
+                _posVBO = {}, _indexVBO = {}, _textureVBO = {},
+
+                    // rect
+                    posData = [ -1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0 ],
+                    indexData = [ 0, 1, 2, 0, 2, 3 ],
+                    textureData = [ 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0 ],
+                    makeBufferSet( "rect", posData, 3, indexData, 1, textureData, 2 );
+            }
+
+            function makeBufferSet( $name, $posData, $posNum, $indexData, $indexNum, $textureData, $textureNum ){
+                makeBuffer( $name, _posVBO, $posData, $posNum ),
+                    makeBuffer( $name, _indexVBO, $indexData, $indexNum ),
+                    makeBuffer( $name, _textureVBO, $textureData, $textureNum )
+            }
+
+            function makeBuffer( $name, $type, $data, $size ){
+                var bf = _gl.createBuffer();
+                if( $type == _posVBO || $type == _textureVBO )
+                    _gl.bindBuffer( _gl.ARRAY_BUFFER, bf ), _gl.bufferData( _gl.ARRAY_BUFFER, new Float32Array( $data ), _gl.STATIC_DRAW );
+                else
+                    _gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, bf ), _gl.bufferData( _gl.ELEMENT_ARRAY_BUFFER, new Uint16Array( $data ), _gl.STATIC_DRAW );
+                bf.size = $size, bf.num = $data.length / $size,
+                    $type[ $name ] = bf;
+            }
+
+            //----------------------------------------------------------------------------------------------------------------------------------------------//
+            // matrix
+            function initMatrix(){
+                _mtrP = mat4.create();
+                _mtrMV = mat4.create();
+            }
+
+            //----------------------------------------------------------------------------------------------------------------------------------------------//
+            // resize
+            function resize(){
+                _gl.width = _canvas.width,
+                    _gl.height = _canvas.height,
+
+                    mat4.perspective( 45, _gl.width / _gl.height, 0.1, 1000.0, _mtrP ),
+                    _gl.viewport( 0, 0, _gl.width, _gl.height ),
+                    _gl.uniformMatrix4fv( _programObj.color.uMatrixP, false, _mtrP );
+            }
+
+            //----------------------------------------------------------------------------------------------------------------------------------------------//
+            // render
+            function render(){
+
+                _gl.clearColor( 0.0, 0.0, 0.0, 1.0 );
+                _gl.clear( _gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT );
+                _gl.enable( _gl.BLEND );
+                _gl.blendFunc( _gl.SRC_ALPHA, _gl.ONE_MINUS_SRC_ALPHA );
+                mat4.identity( _mtrMV );
+
+                var prg = _programObj.color;
+                _gl.useProgram( prg );
+
+                mat4.translate( _mtrMV, [ 0.0, 0.0, -10.0 ] );
+
+                // pos
+                _gl.bindBuffer( _gl.ARRAY_BUFFER, _posVBO[ "rect" ] );
+                _gl.vertexAttribPointer( prg.aVertexPosition, _posVBO[ "rect" ].size, _gl.FLOAT, false, 0, 0 );
+
+                // idx
+                _gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, _indexVBO[ "rect" ] );
+
+                // color
+                _gl.uniform4fv( prg.uColor, [ 1.0, 0.5, 1.0, 0.5 ] );
+
+                // uMatrixMV
+                _gl.uniformMatrix4fv( prg.uMatrixMV, false, _mtrMV );
+
+                // draw
+                _gl.drawElements( _gl.TRIANGLES, _indexVBO[ "rect" ].num, _gl.UNSIGNED_SHORT, 0 );
             }
         })(),
 
@@ -232,5 +416,53 @@
 
                     timer = raf( update );
                 }
+        })(),
+
+        //----------------------------------------------------------------------------------------------------------------------------------------------//
+        // Resize
+        (function(){
+            var list, update;
+            list = ( DkGl.Resize = _core.adManager( start, end ) ).getList();
+
+            function start(){ _core.addEvent( W, "resize", update ); }
+
+            function end(){ _core.delEvent( W, "resize", update ); }
+
+            function update( $e ){
+                var i = list.length;
+                while( i-- ) list[ i ].value( list[ i ].key );
+            }
+        })(),
+
+        //----------------------------------------------------------------------------------------------------------------------------------------------//
+        // loader
+        (function(){
+            // XMLHttpRequest
+            function getXHR(){
+                return new XMLHttpRequest();
+            }
+
+            // TODO json parser
+            // ajax
+            function ajax( $url, $cb, $dataType ){
+                var url = $url, cb = $cb, dt = $dataType, req = getXHR();
+
+                // XMLHttpRequest 상태변화
+                req.onreadystatechange = function(){
+                    req.readyState == 4 ? req.status == 200 ?
+                        cb( dt == "xml" ? req.responseXML : dt == "json" ? eval( "(" + req.responseText + ")" ) : dt == "text" ? req.responseText : null )
+                        : null : null;
+                },
+
+                    req.open( "GET", url, true ),
+                    req.send( null );
+            }
+
+            DkGl.loader = {
+                // text 로드
+                text : function( $url, $cb ){
+                    ajax( $url, $cb, "text" );
+                }
+            }
         })()
 })();
