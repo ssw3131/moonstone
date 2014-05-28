@@ -191,6 +191,12 @@
                 log.hide = function(){
                     var body = Doc.body;
                     body.removeChild( e0 ), body.removeChild( e1 ), toggle = false;
+                },
+
+                log.position = function( $left, $top, $width ){
+                    if( $left ) e0.style.left = $left + "px", e1.style.left = $left + "px";
+                    if( $top ) e0.style.top = $top + 22 + "px", e1.style.top = $top + "px";
+                    if( $width ) e0.style.width = $width + "px", e1.style.width = $width + 10 + "px";
                 }
         })(),
 
@@ -208,8 +214,8 @@
                             initBuffer(),
                             initMatrix(),
 
-                            resize(),
                             DkGl.Resize.add( "DkGl", resize ),
+                            resize(),
                             DkGl.Loop.add( "DkGl", render ),
                             $callBack();
                     } );
@@ -237,10 +243,12 @@
                 _vsObj = {}, _fsObj = {}, _programObj = {};
 
                 // color
-                _programObj.color = makeProgram( "shader-vs-color", "shader-fs-color", [ "aVertexPosition" ], [ "uMatrixP", "uMatrixMV", "uColor" ] );
+                makeProgram( "color", "shader-vs-color", "shader-fs-color", [ "aVertexPosition" ], [ "uMatrixP", "uMatrixMV", "uColor" ] );
+                // texture
+//                makeProgram( "texture", "shader-vs-texture", "shader-fs-texture", [ "aVertexPosition", "aTextureCoord" ], [ "uMatrixP", "uMatrixMV", "uSampler" ] );
             }
 
-            function makeProgram( $vs, $fs, $aArr, $uArr ){
+            function makeProgram( $name, $vs, $fs, $aArr, $uArr ){
                 var verSd, fragSd, prg, i, aStr, uStr;
                 verSd = _vsObj[ $vs ] ? _vsObj[ $vs ] : getShader( $vs ),
                     fragSd = _fsObj[ $fs ] ? _fsObj[ $fs ] : getShader( $fs ),
@@ -268,7 +276,7 @@
                     prg[ uStr ] = _gl.getUniformLocation( prg, uStr );
                 }
 
-                return prg;
+                _programObj[ $name ] = prg;
             }
 
             function getShader( $id ){
@@ -346,7 +354,8 @@
                 _gl.width = _canvas.width,
                     _gl.height = _canvas.height,
 
-                    mat4.perspective( 45, _gl.width / _gl.height, 0.1, 1000.0, _mtrP ),
+                    mat4.identity( _mtrP );
+                mat4.perspective( 45, _gl.width / _gl.height, 0.1, 1000.0, _mtrP ),
                     _gl.viewport( 0, 0, _gl.width, _gl.height ),
                     _gl.uniformMatrix4fv( _programObj.color.uMatrixP, false, _mtrP );
             }
