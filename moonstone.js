@@ -220,6 +220,9 @@
                             resize(),
                             DkGl.Loop.add( "DkGl", render ),
                             $callBack();
+                        setTimeout( function(){
+                            DkGl.Loop.del( "DkGl" );
+                        }, 1000 )
                     } );
                 } );
             }
@@ -235,8 +238,8 @@
             function initGl(){
                 DkGl.gl = _gl = _canvas.getContext( "webgl" ) || _canvas.getContext( "experimental-webgl" ) || _canvas.getContext( "webkit-3d" ) || _canvas.getContext( "moz-webgl" );
 
-                if( _gl ) _gl.enable( _gl.DEPTH_TEST );
-                else throw new Error( "DkGl : 이 브라우저에서는 WebGL은 사용이 불가능 합니다." );
+                if( !_gl ) throw new Error( "DkGl : 이 브라우저에서는 WebGL은 사용이 불가능 합니다." );
+//                _gl.enable( _gl.DEPTH_TEST );
             }
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
@@ -349,6 +352,7 @@
             function initMatrix(){
                 _mtrP = mat4.create();
                 _mtrMV = mat4.create();
+                _mtrNull = mat4.create();
             }
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
@@ -359,24 +363,25 @@
                     _gl.height = _canvas.height,
 
                     mat4.identity( _mtrP ),
-                    mat4.perspective( 45, _gl.width / _gl.height, 0.1, 1000.0, _mtrP ),
+                    mat4.perspective( _mtrP, 45, _gl.width / _gl.height, 0.1, 1000.0 ),
                     _gl.viewport( 0, 0, _gl.width, _gl.height );
             }
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
             // render
             function render(){
-                var p, geoType, posVbo, indexVbo, textureVbo, list, i, mesh;
+                var p, geoType, posVbo, indexVbo, textureVbo, list, i, mesh, mtrParent;
 
                 // reset
                 _gl.clearColor( 0.0, 0.0, 0.0, 1.0 ),
                     _gl.clear( _gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT ),
                     _gl.enable( _gl.BLEND ),
-                    _gl.blendFunc( _gl.SRC_ALPHA, _gl.ONE_MINUS_SRC_ALPHA ),
+                    _gl.blendFunc( _gl.ONE, _gl.ONE_MINUS_SRC_ALPHA ),
                     mat4.identity( _mtrMV ),
 
                     // geoCollection
-                    geoCollection();
+                    _geoCollect = {},
+                    geoCollection( _children );
 
                 // uniform
                 for( k in _programObj )
@@ -393,13 +398,13 @@
                         _gl.useProgram( p );
 
                         // matrix
-                        mat4.translate( _mtrMV, [ mesh.x, mesh.y, mesh.z ] );
-                        mat4.scale( _mtrMV, mesh.scaleX, [ 1, 0, 0 ] );
-                        mat4.scale( _mtrMV, mesh.scaleY, [ 0, 1, 0 ] );
-                        mat4.scale( _mtrMV, mesh.scaleZ, [ 0, 0, 1 ] );
-                        mat4.rotate( _mtrMV, degToRad( mesh.rotateX  ), [ 1, 0, 0 ] );
-                        mat4.rotate( _mtrMV, degToRad( mesh.rotateY  ), [ 0, 1, 0 ] );
-                        mat4.rotate( _mtrMV, degToRad( mesh.rotateZ  ), [ 0, 0, 1 ] );
+                        mat4.identity( _mtrMV );
+
+                        if ( checkParent( mesh ) ) {
+                            mtrParent = setMatrix( mesh.parent );
+                            mat4.multiply( _mtrMV, _mtrMV, mtrParent );
+                        }
+
 
                         // buffer
                         _gl.bindBuffer( _gl.ARRAY_BUFFER, posVbo );
@@ -416,14 +421,27 @@
                 }
             }
 
-            function geoCollection(){
-                var children = _children, mesh, geoType, i;
-                _geoCollect = {}, i = children.length;
-                while( i-- )
-                    mesh = children[i],
+            function geoCollection( $children ){
+                var mesh, geoType, i = $children.length;
+                while( i-- ){
+                    mesh = $children[i],
                         geoType = mesh.geoType,
                         _geoCollect[ geoType ] = _geoCollect[ geoType ] ? _geoCollect[ geoType ] : [],
-                        _geoCollect[ geoType ].push( mesh );
+                        _geoCollect[ geoType ].push( mesh ),
+                        mesh.children.length ? geoCollection( mesh.children ) : null;
+                }
+            }
+
+            function setMatrix( $mesh ) {
+                var mtr = mat4.create();
+                mat4.translate( mtr, mtr, [ $mesh.x, $mesh.y, $mesh.z ] );
+                return mtr;
+            }
+
+            function checkParent( $mesh ){
+                _mtrMV = setMatrix( $mesh );
+                if ( $mesh.parent == _canvas || $mesh.parent == null ) return false;
+                else return true;
             }
 
             function degToRad( $degree ){
