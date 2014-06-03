@@ -5,10 +5,11 @@
 (function(){
     var W = window, Doc = document, Head = Doc.getElementsByTagName( "head" )[ 0 ],
         DkGl, Detector, _core, _prototype,
-        _gl, _canvas, _children, _geoCollect,
+        _gl, _canvas, _children, _resize, _render, _geoCollectObj,
+        _mtrP, _mtrMV,
         _vsObj, _fsObj, _programObj,
         _posVboObj, _indexVboObj, _textureVboObj,
-        _mtrP, _mtrMV;
+        _textureObj = {};
 
     //----------------------------------------------------------------------------------------------------------------------------------------------//
     // DkGl
@@ -206,31 +207,33 @@
             DkGl.init = function( $id, $shader, $callBack ){
                 _core.addEvent( Doc, "DOMContentLoaded", function(){
                     DkGl.loader.text( $shader, function( $data ){
+                        // shader.html
                         Head.innerHTML += $data,
 
-                            initCanvas( $id ),
+                            // canvas
+                            DkGl.canvas = _canvas = Doc.getElementById( $id ),
+
                             initGl(),
                             initShader(),
                             initBuffer(),
-                            initMatrix(),
 
+                            // children
                             DkGl.children = _children = [],
 
-                            DkGl.Resize.add( "DkGl", resize ),
-                            resize(),
-                            DkGl.Loop.add( "DkGl", render ),
+                            // color
+                            DkGl.color = [],
+
+                            // matrix
+                            _mtrP = mat4.create(),
+                            _mtrMV = mat4.create(),
+
+                            DkGl.Resize.add( "DkGl", _resize ), _resize(),
+                            DkGl.Loop.add( "DkGl", _render ),
+
                             $callBack();
-                        setTimeout( function(){
-                            DkGl.Loop.del( "DkGl" );
-                        }, 1000 )
+//                        setTimeout( function(){ DkGl.Loop.del( "DkGl" ); }, 500 );
                     } );
                 } );
-            }
-
-            //----------------------------------------------------------------------------------------------------------------------------------------------//
-            // canvas
-            function initCanvas( $id ){
-                DkGl.canvas = _canvas = Doc.getElementById( $id );
             }
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
@@ -239,29 +242,23 @@
                 DkGl.gl = _gl = _canvas.getContext( "webgl" ) || _canvas.getContext( "experimental-webgl" ) || _canvas.getContext( "webkit-3d" ) || _canvas.getContext( "moz-webgl" );
 
                 if( !_gl ) throw new Error( "DkGl : 이 브라우저에서는 WebGL은 사용이 불가능 합니다." );
-//                _gl.enable( _gl.DEPTH_TEST );
+                _gl.enable( _gl.DEPTH_TEST );
             }
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
             // shader
             function initShader(){
-                var p;
-                _vsObj = {}, _fsObj = {}, _programObj = {},
+                _vsObj = {}, _fsObj = {},
+                    _programObj = _core.adManager( function(){}, function(){} ),
 
                     // color
-                    p = makeProgram( "color", "shader-vs-color", "shader-fs-color", [ "uMatrixP", "uMatrixMV", "uColor" ] ),
-                    p.aVertexPosition = _gl.getAttribLocation( p, "aVertexPosition" ),
-                    _gl.enableVertexAttribArray( "aVertexPosition" ),
+                    makeProgram( "color", "shader-vs-color", "shader-fs-color", [ "uMatrixP", "uMatrixMV", "uColor", "uAlpha" ], [ "aVertexPosition" ] ),
 
                     // texture
-                    p = makeProgram( "texture", "shader-vs-texture", "shader-fs-texture", [ "uMatrixP", "uMatrixMV", "uSampler" ] ),
-                    p.aVertexPosition = _gl.getAttribLocation( p, "aVertexPosition" ),
-                    _gl.enableVertexAttribArray( "aVertexPosition" ),
-                    p.aTextureCoord = _gl.getAttribLocation( p, "aTextureCoord" ),
-                    _gl.enableVertexAttribArray( "aTextureCoord" );
+                    makeProgram( "texture", "shader-vs-texture", "shader-fs-texture", [ "uMatrixP", "uMatrixMV", "uSampler" ], [ "aVertexPosition", "aTextureCoord" ] );
             }
 
-            function makeProgram( $name, $vs, $fs, $uArr ){
+            function makeProgram( $name, $vs, $fs, $uArr, $aArr ){
                 var verSd, fragSd, p, i, aStr, uStr;
                 verSd = _vsObj[ $vs ] ? _vsObj[ $vs ] : getShader( $vs ),
                     fragSd = _fsObj[ $fs ] ? _fsObj[ $fs ] : getShader( $fs ),
@@ -275,12 +272,18 @@
                     throw new Error( "DkGl : 쉐이더 초기화에 실패하였습니다" );
 
                 i = $uArr.length;
-                while( i-- ){
-                    uStr = $uArr[ i ];
-                    p[ uStr ] = _gl.getUniformLocation( p, uStr );
-                }
+                while( i-- )
+                    uStr = $uArr[ i ],
+                        p[ uStr ] = _gl.getUniformLocation( p, uStr );
 
-                _programObj[ $name ] = p;
+                p.aArr = $aArr,
+                    i = $aArr.length;
+                while( i-- )
+                    aStr = $aArr[ i ],
+                        p[ aStr ] = _gl.getAttribLocation( p, aStr );
+
+                _programObj.add( $name, p ),
+                    p.name = $name;
 
                 return p;
             }
@@ -346,18 +349,12 @@
                 bf.size = $size, bf.num = $data.length / $size,
                     $type[ $name ] = bf;
             }
+        })(),
 
-            //----------------------------------------------------------------------------------------------------------------------------------------------//
-            // matrix
-            function initMatrix(){
-                _mtrP = mat4.create();
-                _mtrMV = mat4.create();
-                _mtrNull = mat4.create();
-            }
-
-            //----------------------------------------------------------------------------------------------------------------------------------------------//
-            // resize
-            function resize(){
+        //----------------------------------------------------------------------------------------------------------------------------------------------//
+        // resize
+        (function(){
+            _resize = function(){
                 log( "DkGl : resize" ),
                     _gl.width = _canvas.width,
                     _gl.height = _canvas.height,
@@ -366,45 +363,64 @@
                     mat4.perspective( _mtrP, 45, _gl.width / _gl.height, 0.1, 1000.0 ),
                     _gl.viewport( 0, 0, _gl.width, _gl.height );
             }
+        })(),
 
-            //----------------------------------------------------------------------------------------------------------------------------------------------//
-            // render
-            function render(){
-                var p, geoType, posVbo, indexVbo, textureVbo, list, i, mesh, mtrParent;
+        //----------------------------------------------------------------------------------------------------------------------------------------------//
+        // render
+        (function(){
+            _render = function(){
+                var p, posVbo, indexVbo, textureVbo, list, i, k, mesh, material, j, aArr;
 
                 // reset
                 _gl.clearColor( 0.0, 0.0, 0.0, 1.0 ),
                     _gl.clear( _gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT ),
                     _gl.enable( _gl.BLEND ),
-                    _gl.blendFunc( _gl.ONE, _gl.ONE_MINUS_SRC_ALPHA ),
+                    _gl.blendFunc( _gl.SRC_ALPHA, _gl.ONE_MINUS_SRC_ALPHA ),
                     mat4.identity( _mtrMV ),
 
                     // geoCollection
-                    _geoCollect = {},
-                    geoCollection( _children );
+                    _geoCollectObj = {},
+                    geoCollect( _children ),
 
-                // uniform
-                for( k in _programObj )
-                    p = _programObj[ k ],
+                    // uniform
+                    list = _programObj.getList(),
+                    i = list.length;
+                while( i-- )
+                    p = list[ i ].value,
                         _gl.useProgram( p ),
                         _gl.uniformMatrix4fv( p.uMatrixP, false, _mtrP );
 
-                for( k in _geoCollect ){
+                // mesh
+                p = null;
+                for( k in _geoCollectObj ){
                     posVbo = _posVboObj[ k ], indexVbo = _indexVboObj[ k ], textureVbo = _textureVboObj[ k ],
-                        list = _geoCollect[ k ], i = list.length;
+                        list = _geoCollectObj[ k ], i = list.length;
                     while( i-- ){
                         mesh = list[ i ];
-                        p = _programObj.color;
-                        _gl.useProgram( p );
+                        material = mesh.material;
+                        if( p != material.program ){
+                            _gl.useProgram( p = material.program ),
+
+                                aArr = p.aArr, j = aArr.length;
+                            while( j-- )
+                                _gl.enableVertexAttribArray( p[ aArr[ j ] ] );
+                        }
 
                         // matrix
                         mat4.identity( _mtrMV );
+                        _mtrMV = getMatrix( mesh );
 
-                        if ( checkParent( mesh ) ) {
-                            mtrParent = setMatrix( mesh.parent );
-                            mat4.multiply( _mtrMV, _mtrMV, mtrParent );
+                        // color
+                        if( p.name == "color" ){
+                            _gl.uniform3fv( p.uColor, [ material.r / 256, material.g / 256, material.b / 256 ] );
+                            _gl.uniform1f( p.uAlpha, material.alpha );
+                        } else if( p.name == "texture" ){
+                            _gl.bindBuffer( _gl.ARRAY_BUFFER, textureVbo );
+                            _gl.vertexAttribPointer( p.aTextureCoord, textureVbo.size, _gl.FLOAT, false, 0, 0 );
+                            _gl.activeTexture( _gl.TEXTURE0 );
+                            _gl.bindTexture( _gl.TEXTURE_2D, material.texture );
+                            _gl.uniform1i( p.samplerUniform, 0 );
                         }
-
 
                         // buffer
                         _gl.bindBuffer( _gl.ARRAY_BUFFER, posVbo );
@@ -412,36 +428,33 @@
                         _gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, indexVbo );
                         _gl.uniformMatrix4fv( p.uMatrixMV, false, _mtrMV );
 
-                        // color
-                        _gl.uniform4fv( p.uColor, [ 1.0, 0.5, 1.0, 0.5 ] );
-
                         // draw
-                        _gl.drawElements( _gl.TRIANGLES, indexVbo.num, _gl.UNSIGNED_SHORT, 0 );
+                        _gl.drawElements( _gl[ mesh.renderMode ], indexVbo.num, _gl.UNSIGNED_SHORT, 0 );
                     }
                 }
             }
 
-            function geoCollection( $children ){
+            function geoCollect( $children ){
                 var mesh, geoType, i = $children.length;
                 while( i-- ){
                     mesh = $children[i],
                         geoType = mesh.geoType,
-                        _geoCollect[ geoType ] = _geoCollect[ geoType ] ? _geoCollect[ geoType ] : [],
-                        _geoCollect[ geoType ].push( mesh ),
-                        mesh.children.length ? geoCollection( mesh.children ) : null;
+                        _geoCollectObj[ geoType ] = _geoCollectObj[ geoType ] ? _geoCollectObj[ geoType ] : [],
+                        _geoCollectObj[ geoType ].push( mesh ),
+                        mesh.children.length ? geoCollect( mesh.children ) : null;
                 }
             }
 
-            function setMatrix( $mesh ) {
-                var mtr = mat4.create();
-                mat4.translate( mtr, mtr, [ $mesh.x, $mesh.y, $mesh.z ] );
+            function getMatrix( $mesh ){
+                var mtr = getMatrixMesh( $mesh );
+                $mesh.parent != _canvas && $mesh.parent != null ? mat4.multiply( mtr, mtr, getMatrix( $mesh.parent ) ) : null;
                 return mtr;
             }
 
-            function checkParent( $mesh ){
-                _mtrMV = setMatrix( $mesh );
-                if ( $mesh.parent == _canvas || $mesh.parent == null ) return false;
-                else return true;
+            function getMatrixMesh( $mesh ){
+                var mtr = mat4.create();
+                mat4.translate( mtr, mtr, [ $mesh.x, $mesh.y, $mesh.z ] );
+                return mtr;
             }
 
             function degToRad( $degree ){
@@ -452,100 +465,143 @@
         //----------------------------------------------------------------------------------------------------------------------------------------------//
         // prototype
         (function(){
-            var tree, cr = _core, cIs = cr.is, cTe = cr.throwError;
+            var property, tree, cr = _core, cIs = cr.is, cTe = cr.throwError;
 
-            // tree
-            // todo 네이밍, 검증
+            // property
             (function(){
-                tree = {
-                    // 자식객체 숫자
-                    numChildren : function(){
-                        return this.children.length;
+                function makeTexture( $src ){
+                    if( _textureObj[ $src ] ) return _textureObj[ $src ];
+                    var texture, img;
+                    texture = _gl.createTexture(),
+                        img = new Image(),
+                        img.onload = function(){
+                            _gl.bindTexture( _gl.TEXTURE_2D, texture );
+                            _gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, true );
+                            _gl.texImage2D( _gl.TEXTURE_2D, 0, _gl.RGBA, _gl.RGBA, _gl.UNSIGNED_BYTE, img );
+                            _gl.texParameteri( _gl.TEXTURE_2D, _gl.TEXTURE_MAG_FILTER, _gl.NEAREST );
+                            _gl.texParameteri( _gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.NEAREST );
+                            _gl.bindTexture( _gl.TEXTURE_2D, null );
+                        },
+                        img.src = $src,
+                        texture.image = img,
+                        _textureObj[ $src ] = texture;
+                    return texture;
+                }
+
+                function hexToRGB( $color ){
+                    var r = {};
+                    $color = $color.charAt( 0 ) == "#" ? $color.substring( 1, 7 ) : $color,
+                        r.r = parseInt( $color.substring( 0, 2 ), 16 ),
+                        r.g = parseInt( $color.substring( 2, 4 ), 16 ),
+                        r.b = parseInt( $color.substring( 4, 6 ), 16 );
+                    return r;
+                }
+
+                property = {
+                    diffuse : function( $src ){
+                        this.texture = makeTexture( $src );
                     },
 
-                    // 부모객체에 자식으로 추가
-                    addParent : function( $parent ){
-                        var self = this, canvas = _canvas, i;
-                        if( self.parent == $parent ) return self;
-
-                        if( self.parent == canvas ){
-                            i == _children.length;
-                            while( i-- ){
-                                if( _children[ i ] == self ){
-                                    _children.splice( i, 1 );
-                                    break;
-                                }
-                            }
-                        } else {
-                            self.parent ? self.parent.tr( "removeChild", self ) : null;
-                        }
-                        self.parent = $parent, $parent == canvas ? _children.push( self ) : $parent.children.push( self );
-                        return self;
-                    },
-
-                    // 부모객체에 자식객체 제거
-                    removeParent : function( $parent ){
-                        var self = this, canvas = _canvas, i;
-                        self.parent == $parent ? null : cTe( "DkGl : 제공된 parent는 호출자의 부모이어야 합니다." );
-                        if( $parent == canvas ){
-                            self.parent = null,
-                                i = _children.length;
-                            while( i-- ){
-                                if( _children[ i ] == self ){
-                                    _children.splice( i, 1 );
-                                    break;
-                                }
-                            }
-                        } else {
-                            $parent.tr( "removeChild", self );
-                        }
-                        return self;
-                    },
-
-                    // 자식객체 추가
-                    addChild : function( $child ){
-                        var self = this;
-                        $child.parent ? $child.parent.tr( "removeChild", $child ) : null,
-                            $child.parent = self, self.children.push( $child );
-                        return self;
-                    },
-
-                    // 자식객체 제거
-                    removeChild : function( $child ){
-                        var self = this, children = self.children, i = children.length;
-                        $child.parent == self ? null : cTe( "Dk : 제공된 child는 호출자의 자식이어야 합니다." );
-                        while( i-- ){
-                            if( children[ i ] == $child ){
-                                $child.parent = null, children.splice( i, 1 );
-                                break;
-                            }
-                        }
-                        return self;
-                    },
-
-                    // 자식객체 모두 제거 or 해당 인덱스 범위 제거 (slice 개념)
-                    removeChildren : function( $bIndex, $eIndex ){
-                        var self = this, i, children = self.children, leng = children.length, t2;
-                        ( $bIndex < 0 || $eIndex < 0 || $bIndex >= $eIndex || $bIndex >= leng ) ? cTe( "Dk : 제공된 인덱스가 범위를 벗어났습니다." ) : null,
-                            ( $bIndex == undefined ) ? $bIndex = 0 : null,
-                            ( $eIndex == undefined ) ? $eIndex = leng : null,
-                            t2 = children.splice( $bIndex, $eIndex - $bIndex ),
-                            i = t2.length;
-                        while( i-- ) t2[ i ].parent = null, children.splice( i, 1 );
-                        return self;
+                    color : function( $color ){
+                        var self = this, rgb = hexToRGB( $color );
+                        self.r = rgb.r, self.g = rgb.g, self.b = rgb.b;
                     }
                 }
             })(),
 
+                // tree
+                // todo 네이밍, 검증
+                (function(){
+                    tree = {
+                        // 자식객체 숫자
+                        numChildren : function(){
+                            return this.children.length;
+                        },
+
+                        // 부모객체에 자식으로 추가
+                        addParent : function( $parent ){
+                            var self = this, canvas = _canvas, i;
+                            if( self.parent == $parent ) return self;
+
+                            if( self.parent == canvas ){
+                                i == _children.length;
+                                while( i-- ){
+                                    if( _children[ i ] == self ){
+                                        _children.splice( i, 1 );
+                                        break;
+                                    }
+                                }
+                            } else {
+                                self.parent ? self.parent.tr( "removeChild", self ) : null;
+                            }
+                            self.parent = $parent, $parent == canvas ? _children.push( self ) : $parent.children.push( self );
+                            return self;
+                        },
+
+                        // 부모객체에 자식객체 제거
+                        removeParent : function( $parent ){
+                            var self = this, canvas = _canvas, i;
+                            self.parent == $parent ? null : cTe( "DkGl : 제공된 parent는 호출자의 부모이어야 합니다." );
+                            if( $parent == canvas ){
+                                self.parent = null,
+                                    i = _children.length;
+                                while( i-- ){
+                                    if( _children[ i ] == self ){
+                                        _children.splice( i, 1 );
+                                        break;
+                                    }
+                                }
+                            } else {
+                                $parent.tr( "removeChild", self );
+                            }
+                            return self;
+                        },
+
+                        // 자식객체 추가
+                        addChild : function( $child ){
+                            var self = this;
+                            $child.parent ? $child.parent.tr( "removeChild", $child ) : null,
+                                $child.parent = self, self.children.push( $child );
+                            return self;
+                        },
+
+                        // 자식객체 제거
+                        removeChild : function( $child ){
+                            var self = this, children = self.children, i = children.length;
+                            $child.parent == self ? null : cTe( "Dk : 제공된 child는 호출자의 자식이어야 합니다." );
+                            while( i-- ){
+                                if( children[ i ] == $child ){
+                                    $child.parent = null, children.splice( i, 1 );
+                                    break;
+                                }
+                            }
+                            return self;
+                        },
+
+                        // 자식객체 모두 제거 or 해당 인덱스 범위 제거 (slice 개념)
+                        removeChildren : function( $bIndex, $eIndex ){
+                            var self = this, i, children = self.children, leng = children.length, t2;
+                            ( $bIndex < 0 || $eIndex < 0 || $bIndex >= $eIndex || $bIndex >= leng ) ? cTe( "Dk : 제공된 인덱스가 범위를 벗어났습니다." ) : null,
+                                ( $bIndex == undefined ) ? $bIndex = 0 : null,
+                                ( $eIndex == undefined ) ? $eIndex = leng : null,
+                                t2 = children.splice( $bIndex, $eIndex - $bIndex ),
+                                i = t2.length;
+                            while( i-- ) t2[ i ].parent = null, children.splice( i, 1 );
+                            return self;
+                        }
+                    }
+                })(),
+
                 _prototype = {
                     // property
                     pp : function(){
-                        var self = this, a = arguments, i = a.length, k0 = a[ 0 ];
+                        var self = this, pp = property, a = arguments, i = a.length, k, v, r;
                         if( i == 1 )
-                            return self[ k0 ];
+                            return self[ a[ 0 ] ];
                         i % 2 > 0 ? cTe( "DkGl : 파라미터 갯수는 1 또는 짝수여야 합니다" ) : null;
                         while( i-- )
-                            self[ a[ i - 1 ] ] = a[ i-- ];
+                            v = a[ i-- ], k = a[ i ],
+                                pp[ k ] ? pp[ k ].call( self, v ) : self[ k ] = v;
                         return self;
                     },
 
@@ -568,10 +624,10 @@
         (function(){
             var Mesh, pt = _prototype;
 
-            Mesh = function( $geoType ){
+            Mesh = function( $type ){
                 var self = this;
 
-                self.geoType = $geoType,
+                self.geoType = $type,
                     self.renderMode = "TRIANGLES",
 
                     self.parent = null,
@@ -581,13 +637,53 @@
                     self.x = 0, self.y = 0, self.z = 0,
                     self.scaleX = 1, self.scaleY = 1, self.scaleZ = 1,
                     self.rotateX = 0, self.rotateY = 0, self.rotateZ = 0,
-                    self.alpha = 1;
+
+                    // material
+                    self.material = DkGl.material();
             },
 
                 Mesh.prototype = { pp : pt.pp, tr : pt.tr },
 
-                DkGl.mesh = function( $geoType ){
-                    return new Mesh( $geoType );
+                DkGl.mesh = function( $type ){
+                    return new Mesh( $type );
+                }
+        })(),
+
+        //----------------------------------------------------------------------------------------------------------------------------------------------//
+        // Material
+        (function(){
+            var pt = _prototype, ColorMaterial, TextureMaterial;
+
+            ColorMaterial = function( $program ){
+                var self = this, list = _programObj.getList(), i;
+                self.r = 0, self.g = 0, self.b = 0,
+                    self.alpha = 1,
+
+                    i = list.length;
+                while( i-- )
+                    list[ i ].key == $program ? self.program = list[ i ].value : null;
+            },
+
+                TextureMaterial = function( $program ){
+                    var self = this, list = _programObj.getList(), i;
+                    self.texture = null,
+
+                        i = list.length;
+                    while( i-- )
+                        list[ i ].key == $program ? self.program = list[ i ].value : null;
+                },
+
+                ColorMaterial.prototype = { pp : pt.pp },
+                TextureMaterial.prototype = { pp : pt.pp },
+
+                DkGl.material = function( $type ){
+                    switch( $type ){
+                        case "texture" :
+                            return new TextureMaterial( "texture" );
+                        case "color" :
+                        default :
+                            return new ColorMaterial( "color" );
+                    }
                 }
         })(),
 
