@@ -230,7 +230,9 @@
                             DkGl.Resize.add( "DkGl", _resize ), _resize(),
                             DkGl.Loop.add( "DkGl", _render ),
 
+
                             $callBack();
+//                        setTimeout( function(){ DkGl.Loop.add( "DkGl", _render ); }, 1000 );
 //                        setTimeout( function(){ DkGl.Loop.del( "DkGl" ); }, 500 );
                     } );
                 } );
