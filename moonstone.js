@@ -4,7 +4,7 @@
 
 (function(){
     var W = window, Doc = document, Head = Doc.getElementsByTagName( "head" )[ 0 ],
-        DkGl, Detector, _core, _prototype,
+        DkGl, Detector, _core, _util, _prototype,
         _gl, _canvas, _children, _resize, _render, _geoCollectObj,
         _mtrP, _mtrMV,
         _vsObj, _fsObj, _programObj,
@@ -161,6 +161,21 @@
         })(),
 
         //----------------------------------------------------------------------------------------------------------------------------------------------//
+        // util
+        (function(){
+            DkGl.util = _util = {
+                hexToRGB : function( $color ){
+                    var r = {};
+                    $color = $color.charAt( 0 ) == "#" ? $color.substring( 1, 7 ) : $color,
+                        r.r = parseInt( $color.substring( 0, 2 ), 16 ),
+                        r.g = parseInt( $color.substring( 2, 4 ), 16 ),
+                        r.b = parseInt( $color.substring( 4, 6 ), 16 );
+                    return r;
+                }
+            }
+        })(),
+
+        //----------------------------------------------------------------------------------------------------------------------------------------------//
         // log
         (function(){
             if( W.log ) return W.log( "DkGl : log가 이미 존재합니다." );
@@ -220,16 +235,12 @@
                             // children
                             DkGl.children = _children = [],
 
-                            // color
-                            DkGl.color = [],
-
                             // matrix
                             _mtrP = mat4.create(),
                             _mtrMV = mat4.create(),
 
                             DkGl.Resize.add( "DkGl", _resize ), _resize(),
                             DkGl.Loop.add( "DkGl", _render ),
-
 
                             $callBack();
 //                        setTimeout( function(){ DkGl.Loop.add( "DkGl", _render ); }, 1000 );
@@ -366,7 +377,6 @@
                     _gl.viewport( 0, 0, _gl.width, _gl.height );
             }
         })(),
-
         //----------------------------------------------------------------------------------------------------------------------------------------------//
         // render
         (function(){
@@ -374,8 +384,7 @@
                 var p, posVbo, indexVbo, textureVbo, list, i, k, mesh, material, j, aArr;
 
                 // reset
-                _gl.clearColor( 0.0, 0.0, 0.0, 1.0 ),
-                    _gl.clear( _gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT ),
+                _gl.clear( _gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT ),
                     _gl.enable( _gl.BLEND ),
                     _gl.blendFunc( _gl.SRC_ALPHA, _gl.ONE_MINUS_SRC_ALPHA ),
                     mat4.identity( _mtrMV ),
@@ -412,6 +421,12 @@
                         mat4.identity( _mtrMV );
                         _mtrMV = getMatrix( mesh );
 
+                        // buffer
+                        _gl.bindBuffer( _gl.ARRAY_BUFFER, posVbo );
+                        _gl.vertexAttribPointer( p.aVertexPosition, posVbo.size, _gl.FLOAT, false, 0, 0 );
+                        _gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, indexVbo );
+                        _gl.uniformMatrix4fv( p.uMatrixMV, false, _mtrMV );
+
                         // color
                         if( p.name == "color" ){
                             _gl.uniform3fv( p.uColor, [ material.r / 256, material.g / 256, material.b / 256 ] );
@@ -423,12 +438,6 @@
                             _gl.bindTexture( _gl.TEXTURE_2D, material.texture );
                             _gl.uniform1i( p.samplerUniform, 0 );
                         }
-
-                        // buffer
-                        _gl.bindBuffer( _gl.ARRAY_BUFFER, posVbo );
-                        _gl.vertexAttribPointer( p.aVertexPosition, posVbo.size, _gl.FLOAT, false, 0, 0 );
-                        _gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, indexVbo );
-                        _gl.uniformMatrix4fv( p.uMatrixMV, false, _mtrMV );
 
                         // draw
                         _gl.drawElements( _gl[ mesh.renderMode ], indexVbo.num, _gl.UNSIGNED_SHORT, 0 );
@@ -465,9 +474,18 @@
         })(),
 
         //----------------------------------------------------------------------------------------------------------------------------------------------//
+        // bg
+        (function(){
+            DkGl.bg = function( $color ){
+                var color = _util.hexToRGB( $color );
+                _gl.clearColor( color.r / 256, color.g / 256, color.b / 256, 1.0 );
+            }
+        })(),
+
+        //----------------------------------------------------------------------------------------------------------------------------------------------//
         // prototype
         (function(){
-            var property, tree, cr = _core, cIs = cr.is, cTe = cr.throwError;
+            var property, tree, cr = _core, cIs = cr.is, cTe = cr.throwError, ut = _util;
 
             // property
             (function(){
@@ -490,22 +508,13 @@
                     return texture;
                 }
 
-                function hexToRGB( $color ){
-                    var r = {};
-                    $color = $color.charAt( 0 ) == "#" ? $color.substring( 1, 7 ) : $color,
-                        r.r = parseInt( $color.substring( 0, 2 ), 16 ),
-                        r.g = parseInt( $color.substring( 2, 4 ), 16 ),
-                        r.b = parseInt( $color.substring( 4, 6 ), 16 );
-                    return r;
-                }
-
                 property = {
                     diffuse : function( $src ){
                         this.texture = makeTexture( $src );
                     },
 
                     color : function( $color ){
-                        var self = this, rgb = hexToRGB( $color );
+                        var self = this, rgb = ut.hexToRGB( $color );
                         self.r = rgb.r, self.g = rgb.g, self.b = rgb.b;
                     }
                 }
@@ -696,7 +705,7 @@
             list = ( DkGl.Loop = _core.adManager( start, end ) ).getList(),
 
                 raf = (function(){ return  W.requestAnimationFrame || W.webkitRequestAnimationFrame || W.mozRequestAnimationFrame || W.oRequestAnimationFrame || function( $loop ){ return W.setTimeout( $loop, 16 ) }; })(),
-                caf = (function(){ return W.cancelAnimationFrame || W.webkitCancelAnimationFrame || W.mozCancelAnimationFrame || W.oCancelAnimationFrame || function( $id ){ W.clearTimeout( $id ); }; })()
+                caf = (function(){ return W.cancelAnimationFrame || W.webkitCancelAnimationFrame || W.mozCancelAnimationFrame || W.oCancelAnimationFrame || function( $id ){ W.clearTimeout( $id ); }; })();
 
             function start(){ timer = raf( update ); }
 
