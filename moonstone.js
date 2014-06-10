@@ -5,7 +5,7 @@
 (function(){
     var W = window, Doc = document, Head = Doc.getElementsByTagName( "head" )[ 0 ],
         DkGl, Detector, _core, _util, _prototype,
-        _gl, _canvas, _children, _resize, _render, _geoCollectObj,
+        _gl, _canvas, _children, _resize, _render,
         _mtrP, _mtrMV,
         _vsObj, _fsObj, _programObj,
         _posVboObj, _indexVboObj, _textureVboObj,
@@ -13,7 +13,7 @@
 
     //----------------------------------------------------------------------------------------------------------------------------------------------//
     // DkGl
-    DkGl = W.DkGl = { Information : { name : "Dk moonstone", version : "v0.0.0.1", contact : "ssw3131@daum.net" } },
+    DkGl = W.DkGl = { Information : { name : "Dk moonstone", version : "v0.0.0.2", contact : "ssw3131@daum.net" } },
 
         //----------------------------------------------------------------------------------------------------------------------------------------------//
         // Detector
@@ -243,8 +243,7 @@
                             DkGl.Loop.add( "DkGl", _render ),
 
                             $callBack();
-//                        setTimeout( function(){ DkGl.Loop.add( "DkGl", _render ); }, 1000 );
-//                        setTimeout( function(){ DkGl.Loop.del( "DkGl" ); }, 500 );
+                        setTimeout( function(){ DkGl.Loop.del( "DkGl" ); }, 500 );
                     } );
                 } );
             }
@@ -256,6 +255,7 @@
 
                 if( !_gl ) throw new Error( "DkGl : 이 브라우저에서는 WebGL은 사용이 불가능 합니다." );
                 _gl.enable( _gl.DEPTH_TEST );
+                if( W.WebGLDebugUtils ) _gl = WebGLDebugUtils.makeDebugContext( _gl );
             }
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
@@ -265,10 +265,10 @@
                     _programObj = _core.adManager( function(){}, function(){} ),
 
                     // color
-                    makeProgram( "color", "shader-vs-color", "shader-fs-color", [ "uMatrixP", "uMatrixMV", "uColor", "uAlpha" ], [ "aVertexPosition" ] ),
+                    makeProgram( "color", "shader-vs-color", "shader-fs-color", [ "uMatrixP", "uMatrixMV", "uColor", "uAlpha" ], [ "aVertexPosition" ] );
 
-                    // texture
-                    makeProgram( "texture", "shader-vs-texture", "shader-fs-texture", [ "uMatrixP", "uMatrixMV", "uSampler" ], [ "aVertexPosition", "aTextureCoord" ] );
+                // texture
+                makeProgram( "texture", "shader-vs-texture", "shader-fs-texture", [ "uMatrixP", "uMatrixMV", "uSampler" ], [ "aVertexPosition", "aTextureCoord" ] );
             }
 
             function makeProgram( $name, $vs, $fs, $uArr, $aArr ){
@@ -293,12 +293,14 @@
                     i = $aArr.length;
                 while( i-- )
                     aStr = $aArr[ i ],
-                        p[ aStr ] = _gl.getAttribLocation( p, aStr );
+                        p[ aStr ] = _gl.getAttribLocation( p, aStr ),
+                        _gl.enableVertexAttribArray( p[ aStr ] );
 
                 _programObj.add( $name, p ),
                     p.name = $name;
 
                 return p;
+
             }
 
             function getShader( $id ){
@@ -355,10 +357,10 @@
 
             function makeBuffer( $name, $type, $data, $size ){
                 var bf = _gl.createBuffer();
-                if( $type == _posVboObj || $type == _textureVboObj )
-                    _gl.bindBuffer( _gl.ARRAY_BUFFER, bf ), _gl.bufferData( _gl.ARRAY_BUFFER, new Float32Array( $data ), _gl.STATIC_DRAW );
-                else
+                if( $type == _indexVboObj )
                     _gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, bf ), _gl.bufferData( _gl.ELEMENT_ARRAY_BUFFER, new Uint16Array( $data ), _gl.STATIC_DRAW );
+                else
+                    _gl.bindBuffer( _gl.ARRAY_BUFFER, bf ), _gl.bufferData( _gl.ARRAY_BUFFER, new Float32Array( $data ), _gl.STATIC_DRAW );
                 bf.size = $size, bf.num = $data.length / $size,
                     $type[ $name ] = bf;
             }
@@ -368,20 +370,27 @@
         // resize
         (function(){
             _resize = function(){
+                var list, i, p;
                 log( "DkGl : resize" ),
                     _gl.width = _canvas.width,
                     _gl.height = _canvas.height,
 
                     mat4.identity( _mtrP ),
                     mat4.perspective( _mtrP, 45, _gl.width / _gl.height, 0.1, 1000.0 ),
-                    _gl.viewport( 0, 0, _gl.width, _gl.height );
+                    _gl.viewport( 0, 0, _gl.width, _gl.height ),
+
+                    // uniform
+                    list = _programObj.getList(), i = list.length;
+                while( i-- )
+                    p = list[ i ].value, _gl.useProgram( p ), _gl.uniformMatrix4fv( p.uMatrixP, false, _mtrP );
             }
         })(),
         //----------------------------------------------------------------------------------------------------------------------------------------------//
         // render
         (function(){
+            var mtrMVStack = [];
+
             _render = function(){
-                var p, posVbo, indexVbo, textureVbo, list, i, k, mesh, material, j, aArr;
 
                 // reset
                 _gl.clear( _gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT ),
@@ -389,87 +398,56 @@
                     _gl.blendFunc( _gl.SRC_ALPHA, _gl.ONE_MINUS_SRC_ALPHA ),
                     mat4.identity( _mtrMV ),
 
-                    // geoCollection
-                    _geoCollectObj = {},
-                    geoCollect( _children ),
+                    // rect
+                    posVbo = _posVboObj[ "rect" ], indexVbo = _indexVboObj[ "rect" ], textureVbo = _textureVboObj[ "rect" ],
 
-                    // uniform
-                    list = _programObj.getList(),
-                    i = list.length;
-                while( i-- )
-                    p = list[ i ].value,
-                        _gl.useProgram( p ),
-                        _gl.uniformMatrix4fv( p.uMatrixP, false, _mtrP );
+                    mat4.identity( _mtrMV ),
+                    renderList( DkGl.children );
+            }
 
-                // mesh
-                p = null;
-                for( k in _geoCollectObj ){
-                    posVbo = _posVboObj[ k ], indexVbo = _indexVboObj[ k ], textureVbo = _textureVboObj[ k ],
-                        list = _geoCollectObj[ k ], i = list.length;
-                    while( i-- ){
-                        mesh = list[ i ];
-                        material = mesh.material;
-                        if( p != material.program ){
-                            _gl.useProgram( p = material.program ),
+            function renderList( $children ){
+                var posVbo, indexVbo, textureVbo, list, i, mesh, material, p, aArr, j;
 
-                                aArr = p.aArr, j = aArr.length;
-                            while( j-- )
-                                _gl.enableVertexAttribArray( p[ aArr[ j ] ] );
-                        }
+                // rect
+                posVbo = _posVboObj[ "rect" ], indexVbo = _indexVboObj[ "rect" ], textureVbo = _textureVboObj[ "rect" ],
 
-                        // matrix
-                        mat4.identity( _mtrMV );
-                        _mtrMV = getMatrix( mesh );
+                    list = $children, i = list.length;
+                while( i-- ){
+                    mesh = list[ i ], material = mesh.material;
+                    _gl.useProgram( p = material.program );
 
-                        // buffer
-                        _gl.bindBuffer( _gl.ARRAY_BUFFER, posVbo );
-                        _gl.vertexAttribPointer( p.aVertexPosition, posVbo.size, _gl.FLOAT, false, 0, 0 );
-                        _gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, indexVbo );
+                    // pushMtrMV
+                    mtrMVStack.push( mat4.copy( mat4.create(), _mtrMV ) );
+
+                    mat4.translate( _mtrMV, _mtrMV, [ mesh.x, mesh.y, mesh.z ] );
+
+                    // buffer
+                    _gl.bindBuffer( _gl.ARRAY_BUFFER, posVbo ),
+                        _gl.vertexAttribPointer( p.aVertexPosition, posVbo.size, _gl.FLOAT, false, 0, 0 ),
+                        _gl.bindBuffer( _gl.ELEMENT_ARRAY_BUFFER, indexVbo ),
                         _gl.uniformMatrix4fv( p.uMatrixMV, false, _mtrMV );
 
-                        // color
-                        if( p.name == "color" ){
-                            _gl.uniform3fv( p.uColor, [ material.r / 256, material.g / 256, material.b / 256 ] );
-                            _gl.uniform1f( p.uAlpha, material.alpha );
-                        } else if( p.name == "texture" ){
-                            _gl.bindBuffer( _gl.ARRAY_BUFFER, textureVbo );
-                            _gl.vertexAttribPointer( p.aTextureCoord, textureVbo.size, _gl.FLOAT, false, 0, 0 );
-                            _gl.activeTexture( _gl.TEXTURE0 );
-                            _gl.bindTexture( _gl.TEXTURE_2D, material.texture );
-                            _gl.uniform1i( p.samplerUniform, 0 );
-                        }
-
-                        // draw
-                        _gl.drawElements( _gl[ mesh.renderMode ], indexVbo.num, _gl.UNSIGNED_SHORT, 0 );
+                    // color
+                    if( p.name == "color" ){
+                        _gl.uniform3fv( p.uColor, [ material.r / 256, material.g / 256, material.b / 256 ] );
+                        _gl.uniform1f( p.uAlpha, material.alpha );
+                    } else if( p.name == "texture" ){
+                        _gl.bindBuffer( _gl.ARRAY_BUFFER, textureVbo );
+                        _gl.vertexAttribPointer( p.aTextureCoord, textureVbo.size, _gl.FLOAT, false, 0, 0 );
+                        _gl.activeTexture( _gl.TEXTURE0 );
+                        _gl.bindTexture( _gl.TEXTURE_2D, material.texture );
+                        _gl.uniform1i( p.samplerUniform, 0 );
                     }
+
+                    // draw
+                    _gl.drawElements( _gl.TRIANGLES, indexVbo.num, _gl.UNSIGNED_SHORT, 0 );
+
+                    // children
+                    mesh.children.length > 0 ? renderList( mesh.children ) : null;
+
+                    // popMtrMV
+                    mtrMVStack.length == 0 ? log( "Invalid popMtrMV!" ) : _mtrMV = mtrMVStack.pop();
                 }
-            }
-
-            function geoCollect( $children ){
-                var mesh, geoType, i = $children.length;
-                while( i-- ){
-                    mesh = $children[i],
-                        geoType = mesh.geoType,
-                        _geoCollectObj[ geoType ] = _geoCollectObj[ geoType ] ? _geoCollectObj[ geoType ] : [],
-                        _geoCollectObj[ geoType ].push( mesh ),
-                        mesh.children.length ? geoCollect( mesh.children ) : null;
-                }
-            }
-
-            function getMatrix( $mesh ){
-                var mtr = getMatrixMesh( $mesh );
-                $mesh.parent != _canvas && $mesh.parent != null ? mat4.multiply( mtr, mtr, getMatrix( $mesh.parent ) ) : null;
-                return mtr;
-            }
-
-            function getMatrixMesh( $mesh ){
-                var mtr = mat4.create();
-                mat4.translate( mtr, mtr, [ $mesh.x, $mesh.y, $mesh.z ] );
-                return mtr;
-            }
-
-            function degToRad( $degree ){
-                return $degree * Math.PI / 180;
             }
         })(),
 
@@ -477,7 +455,7 @@
         // bg
         (function(){
             DkGl.bg = function( $color ){
-                var color =_util.hexToRGB( $color );
+                var color = _util.hexToRGB( $color );
                 _gl.clearColor( color.r / 256, color.g / 256, color.b / 256, 1.0 );
             }
         })(),
@@ -489,31 +467,34 @@
 
             // property
             (function(){
-                function makeTexture( $src ){
+                function makeTexture( $src, $complete ){
                     if( _textureObj[ $src ] ) return _textureObj[ $src ];
                     var texture, img;
                     texture = _gl.createTexture(),
                         img = new Image(),
                         img.onload = function(){
-                            _gl.bindTexture( _gl.TEXTURE_2D, texture );
-                            _gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, true );
-                            _gl.texImage2D( _gl.TEXTURE_2D, 0, _gl.RGBA, _gl.RGBA, _gl.UNSIGNED_BYTE, img );
-                            _gl.texParameteri( _gl.TEXTURE_2D, _gl.TEXTURE_MAG_FILTER, _gl.NEAREST );
-                            _gl.texParameteri( _gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.NEAREST );
-                            _gl.bindTexture( _gl.TEXTURE_2D, null );
+                            _gl.bindTexture( _gl.TEXTURE_2D, texture ),
+                                _gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, true ),
+                                _gl.texImage2D( _gl.TEXTURE_2D, 0, _gl.RGBA, _gl.RGBA, _gl.UNSIGNED_BYTE, img ),
+                                _gl.texParameteri( _gl.TEXTURE_2D, _gl.TEXTURE_MAG_FILTER, _gl.NEAREST ),
+                                _gl.texParameteri( _gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.NEAREST ),
+                                _gl.bindTexture( _gl.TEXTURE_2D, null ),
+                                _textureObj[ $src ] = texture,
+                                $complete( texture );
                         },
-                        img.src = $src,
                         texture.image = img,
-                        _textureObj[ $src ] = texture;
-                    return texture;
+                        img.src = $src;
                 }
 
                 property = {
-                    diffuse : function( $src ){
-                        this.texture = makeTexture( $src );
+                    src : function( $src ){
+                        var self = this;
+                        makeTexture( $src, function( $texture ){
+                            self.texture = $texture;
+                        } );
                     },
 
-                    color : function( $color ){
+                    hex : function( $color ){
                         var self = this, rgb = ut.hexToRGB( $color );
                         self.r = rgb.r, self.g = rgb.g, self.b = rgb.b;
                     }
@@ -638,18 +619,16 @@
             Mesh = function( $type ){
                 var self = this;
 
-                self.geoType = $type,
-                    self.renderMode = "TRIANGLES",
+                self.geoType = $type ? $type : "rect",
 
                     self.parent = null,
                     self.children = [],
 
-                    // matrix
                     self.x = 0, self.y = 0, self.z = 0,
+                    self.width = 1, self.height = 1,
                     self.scaleX = 1, self.scaleY = 1, self.scaleZ = 1,
                     self.rotateX = 0, self.rotateY = 0, self.rotateZ = 0,
 
-                    // material
                     self.material = DkGl.material();
             },
 
@@ -657,7 +636,7 @@
 
                 DkGl.mesh = function( $type ){
                     return new Mesh( $type );
-                }
+                };
         })(),
 
         //----------------------------------------------------------------------------------------------------------------------------------------------//
@@ -666,22 +645,16 @@
             var pt = _prototype, ColorMaterial, TextureMaterial;
 
             ColorMaterial = function( $program ){
-                var self = this, list = _programObj.getList(), i;
+                var self = this, list = _programObj.getList();
                 self.r = 0, self.g = 0, self.b = 0,
                     self.alpha = 1,
-
-                    i = list.length;
-                while( i-- )
-                    list[ i ].key == $program ? self.program = list[ i ].value : null;
+                    self.program = list[ list[ $program ] ].value;
             },
 
                 TextureMaterial = function( $program ){
-                    var self = this, list = _programObj.getList(), i;
+                    var self = this, list = _programObj.getList();
                     self.texture = null,
-
-                        i = list.length;
-                    while( i-- )
-                        list[ i ].key == $program ? self.program = list[ i ].value : null;
+                        self.program = list[ list[ $program ] ].value;
                 },
 
                 ColorMaterial.prototype = { pp : pt.pp },
