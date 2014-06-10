@@ -477,7 +477,7 @@
         // bg
         (function(){
             DkGl.bg = function( $color ){
-                var color = _util.hexToRGB( $color );
+                var color =_util.hexToRGB( $color );
                 _gl.clearColor( color.r / 256, color.g / 256, color.b / 256, 1.0 );
             }
         })(),
