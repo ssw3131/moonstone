@@ -430,7 +430,7 @@
                 var gl, canvas = _glCore.canvas;
                 _glCore.gl = gl = canvas.getContext( "webgl" ) || canvas.getContext( "experimental-webgl" ) || canvas.getContext( "webkit-3d" ) || canvas.getContext( "moz-webgl" ),
                     gl ? null : _jsCore.throwError( "DkGl : 이 브라우저에서는 WebGL은 사용이 불가능 합니다." );
-                gl.enable( gl.DEPTH_TEST );
+//                gl.enable( gl.DEPTH_TEST );
                 if( W.WebGLDebugUtils ) gl = WebGLDebugUtils.makeDebugContext( gl );
             }
 
@@ -543,7 +543,7 @@
                 mtrP = gc.mtrP,
                 vboPosObj = gc.vboPosObj, vboIndexObj = gc.vboIndexObj, vboTextureObj = gc.vboTextureObj,
                 mat4 = DkGl.mat4,
-                mtrNull = mat4.create(),
+                mtrNull = mat4.create(), mtrParent = mat4.create(),
                 p, geoType, posVbo, indexVbo, textureVbo;
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
@@ -600,7 +600,7 @@
                     drawCall( gc.children );
             }
 
-            function drawCall( $children ){
+            function drawCall( $children, $mtrParent ){
                 var list = $children, i, leng, sprite, material, aArr, j, mtr;
 
                 for( i = 0, leng = list.length; i < leng; i++ ){
@@ -634,6 +634,8 @@
 
                     // matrix
                     mtr = getMtr( sprite );
+                    if ( $mtrParent ) mat4.multiply( mtr, $mtrParent, mtr );
+                    mat4.copy( mtrParent, mtr );
                     mat4.scale( mtr, mtr, [ sprite.width, sprite.height, 1 ] );
                     gl.uniformMatrix4fv( p.uMatrixMV, false, mtr );
 
@@ -648,21 +650,14 @@
                     gl.drawElements( gl.TRIANGLES, indexVbo.num, gl.UNSIGNED_SHORT, 0 );
 
                     // children
-                    sprite.children.length > 0 ? drawCall( sprite.children ) : null;
+                    sprite.children.length > 0 ? drawCall( sprite.children, mtrParent ) : null;
                 }
             }
 
             function getMtr( $sprite ){
-                var parent = $sprite.parent, mtrS, mtr;
-                mtr = mat4.identity( mtrNull );
                 $sprite.updated ? null : $sprite.update();
-                mtrS = $sprite.mtr;
-                mat4.copy( mtr, mtrS );
-
-                if( parent != canvas && parent != null )
-                    mat4.multiply( mtr, getMtr( parent ), mtrS );
-
-                return mtr;
+                mat4.copy( mtrNull, $sprite.mtr );
+                return mtrNull;
             }
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
