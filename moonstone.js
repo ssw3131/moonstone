@@ -299,6 +299,11 @@
                     return $out[0] = $a[0], $out[1] = $a[1], $out[2] = $a[2], $out[3] = $a[3], $out[4] = $a[4], $out[5] = $a[5], $out[6] = $a[6], $out[7] = $a[7], $out[8] = $a[8], $out[9] = $a[9], $out[10] = $a[10], $out[11] = $a[11], $out[12] = $a[12], $out[13] = $a[13], $out[14] = $a[14], $out[15] = $a[15], $out;
                 },
 
+                multiply : function( $out, $a, $b ){
+                    var a00 = $a[0], a01 = $a[1], a02 = $a[2], a03 = $a[3], a10 = $a[4], a11 = $a[5], a12 = $a[6], a13 = $a[7], a20 = $a[8], a21 = $a[9], a22 = $a[10], a23 = $a[11], a30 = $a[12], a31 = $a[13], a32 = $a[14], a33 = $a[15], b0 = $b[0], b1 = $b[1], b2 = $b[2], b3 = $b[3];
+                    return $out[0] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30, $out[1] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31, $out[2] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32, $out[3] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33, b0 = $b[4], b1 = $b[5], b2 = $b[6], b3 = $b[7], $out[4] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30, $out[5] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31, $out[6] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32, $out[7] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33, b0 = $b[8], b1 = $b[9], b2 = $b[10], b3 = $b[11], $out[8] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30, $out[9] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31, $out[10] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32, $out[11] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33, b0 = $b[12], b1 = $b[13], b2 = $b[14], b3 = $b[15], $out[12] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30, $out[13] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31, $out[14] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32, $out[15] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33, $out;
+                },
+
                 translate : function( $out, $a, $v ){
                     var x = $v[0], y = $v[1], z = $v[2], a00, a01, a02, a03, a10, a11, a12, a13, a20, a21, a22, a23;
 
@@ -399,7 +404,7 @@
                 vboIndexObj : {},
                 vboTextureObj : {},
                 mtrP : null,
-                mtrMV : null,
+//                mtrMV : null,
                 mtrC : null,
                 children : []
             }
@@ -425,7 +430,7 @@
                 var gl, canvas = _glCore.canvas;
                 _glCore.gl = gl = canvas.getContext( "webgl" ) || canvas.getContext( "experimental-webgl" ) || canvas.getContext( "webkit-3d" ) || canvas.getContext( "moz-webgl" ),
                     gl ? null : _jsCore.throwError( "DkGl : 이 브라우저에서는 WebGL은 사용이 불가능 합니다." );
-//                gl.enable( gl.DEPTH_TEST );
+                gl.enable( gl.DEPTH_TEST );
                 if( W.WebGLDebugUtils ) gl = WebGLDebugUtils.makeDebugContext( gl );
             }
 
@@ -485,6 +490,7 @@
                 var posData, indexData, textureData;
 
                 // rect
+                // posData = [ -1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0 ],
                 posData = [ 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0 ],
                     indexData = [ 0, 1, 2, 0, 2, 3 ],
                     textureData = [ 0, 0, 1, 0, 1, 1, 0, 1 ],
@@ -514,7 +520,7 @@
 
             function initMatrix(){
                 var mat4 = DkGl.mat4;
-                _glCore.mtrP = DkGl.mat4.create(), _glCore.mtrMV = DkGl.mat4.create(), _glCore.mtrC = DkGl.mat4.create()
+                _glCore.mtrP = DkGl.mat4.create(), /*_glCore.mtrMV = DkGl.mat4.create(), */_glCore.mtrC = DkGl.mat4.create()
             }
         })(),
 
@@ -531,30 +537,31 @@
         //----------------------------------------------------------------------------------------------------------------------------------------------//
         // view
         _initView = function(){
-            var ut = DkGl.util, uDegToRad = ut.degToRad,
+            var loop,
+                ut = DkGl.util, uDegToRad = ut.degToRad,
                 gc = _glCore, gl = gc.gl, canvas = gc.canvas,
-                mtrP = gc.mtrP, mtrMV = gc.mtrMV,
+                mtrP = gc.mtrP,
                 vboPosObj = gc.vboPosObj, vboIndexObj = gc.vboIndexObj, vboTextureObj = gc.vboTextureObj,
                 mat4 = DkGl.mat4,
-                mtrMVStack = [],
+                mtrNull = mat4.create(),
                 p, geoType, posVbo, indexVbo, textureVbo;
 
-            ut.resize.add( "DkGl", resize ), resize();
-            ut.loop.add( "DkGl", loop );
-//            setTimeout( function(){ ut.loop.del( "DkGl" ); }, 500 );
-
             //----------------------------------------------------------------------------------------------------------------------------------------------//
+
+            ut.resize.add( "DkGl", resize ), resize();
 
             function resize(){
                 log( "DkGl : resize" );
                 var w, h, list, i, p;
 
                 gl.width = w = canvas.width, gl.height = h = canvas.height,
+                    gl.viewport( 0, 0, w, h ),
 
                     mat4.identity( mtrP ),
                     mat4.perspective( mtrP, 45, w / h, 0.1, 10000 ),
-                    mat4.translate( mtrP, mtrP, [ 0, 0, -627.5 ] ),
-                    gl.viewport( 0, 0, w, h ),
+                    mat4.translate( mtrP, mtrP, [ -w / 2, h / 2, -251 / 280 * h ] ),
+//                    mat4.translate( mtrP, mtrP, [ 0, 0, -251 / 280 * h ] ),
+                    mat4.rotateX( mtrP, mtrP, uDegToRad( 180 ) ),
 
                     // uniform
                     list = gc.programObj.getList(), i = list.length;
@@ -564,12 +571,23 @@
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
 
-            function loop(){
-                // animation
-                // 서드파티
-                draw();
-                drawMouse();
-            }
+            (function(){
+                var dNow = Date.now, oldTime = dNow();
+                loop = function(){
+                    var cTime = dNow();
+
+                    if( cTime - oldTime > 16 ){
+                        // animation
+                        // 서드파티
+                        draw();
+                        drawMouse();
+
+                        oldTime = cTime;
+                    }
+                },
+                    ut.loop.add( "DkGl", loop );
+//                setTimeout( function(){ ut.loop.del( "DkGl" ); }, 500 );
+            })()
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -578,18 +596,14 @@
                 gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT ),
                     gl.enable( gl.BLEND ),
                     gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA ),
-                    mat4.identity( mtrMV ),
 
                     drawCall( gc.children );
             }
 
             function drawCall( $children ){
-                var list = $children, i, leng, sprite, material, aArr, j;
+                var list = $children, i, leng, sprite, material, aArr, j, mtr;
 
                 for( i = 0, leng = list.length; i < leng; i++ ){
-                    // pushMtrMV
-                    mtrMVStack.push( mat4.copy( mat4.create(), mtrMV ) );
-
                     sprite = list[ i ], material = sprite.material;
 
                     if( geoType != sprite.geoType ){
@@ -618,13 +632,10 @@
                         }
                     }
 
-                    mat4.translate( mtrMV, mtrMV, [ sprite.x, sprite.y, sprite.z ] );
-                    mat4.scale( mtrMV, mtrMV, [ sprite.width * sprite.scaleX, sprite.height * sprite.scaleY, sprite.scaleZ ] );
-                    mat4.rotateX( mtrMV, mtrMV, uDegToRad( sprite.rotateX ) );
-                    mat4.rotateY( mtrMV, mtrMV, uDegToRad( sprite.rotateY ) );
-                    mat4.rotateZ( mtrMV, mtrMV, uDegToRad( sprite.rotateZ ) );
-
-                    gl.uniformMatrix4fv( p.uMatrixMV, false, mtrMV );
+                    // matrix
+                    mtr = getMtr( sprite );
+                    mat4.scale( mtr, mtr, [ sprite.width, sprite.height, 1 ] );
+                    gl.uniformMatrix4fv( p.uMatrixMV, false, mtr );
 
                     if( p.name == "color" ){
                         gl.uniform3fv( p.uColor, [ material.r / 256, material.g / 256, material.b / 256 ] );
@@ -638,10 +649,20 @@
 
                     // children
                     sprite.children.length > 0 ? drawCall( sprite.children ) : null;
-
-                    // popMtrMV
-                    mtrMVStack.length == 0 ? log( "Invalid popMtrMV!" ) : mtrMV = mtrMVStack.pop();
                 }
+            }
+
+            function getMtr( $sprite ){
+                var parent = $sprite.parent, mtrS, mtr;
+                mtr = mat4.identity( mtrNull );
+                $sprite.updated ? null : $sprite.update();
+                mtrS = $sprite.mtr;
+                mat4.copy( mtr, mtrS );
+
+                if( parent != canvas && parent != null )
+                    mat4.multiply( mtr, getMtr( parent ), mtrS );
+
+                return mtr;
             }
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
@@ -653,8 +674,10 @@
         //----------------------------------------------------------------------------------------------------------------------------------------------//
         // model
         _initModel = function(){
-            var ut = DkGl.util, jc = _jsCore, jcIs = jc.is, jcTe = jc.throwError,
+            var ut = DkGl.util, uDegToRad = ut.degToRad,
+                jc = _jsCore, jcIs = jc.is, jcTe = jc.throwError,
                 gc = _glCore, gl = gc.gl, canvas = gc.canvas, children = gc.children,
+                mat4 = DkGl.mat4,
                 prototype, dataFunc, treeFunc;
 
             dataFunc = {
@@ -670,7 +693,7 @@
                             img = new Image(),
                             img.onload = function(){
                                 gl.bindTexture( gl.TEXTURE_2D, texture ),
-                                    gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, true ),
+                                    // gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, true ),
                                     gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img ),
                                     gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST ),
                                     gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST ),
@@ -777,6 +800,7 @@
                         while( i-- )
                             v = a[ i-- ], k = a[ i ],
                                 func[ k ] ? func[ k ].call( self, v ) : self[ k ] = v;
+                        self.updated = false;
                         return self;
                     },
 
@@ -790,6 +814,18 @@
                             v = a[ i-- ], k = a[ i ],
                                 r = t0( "array", v ) ? func[ k ].apply( self, v ) : func[ k ].call( self, v );
                         return r;
+                    },
+
+                    // matrix
+                    update : function(){
+                        var self = this, mtr = self.mtr;
+                        mat4.identity( mtr );
+                        mat4.translate( mtr, mtr, [ self.x, self.y, self.z ] );
+                        mat4.rotateX( mtr, mtr, uDegToRad( self.rotateX ) );
+                        mat4.rotateY( mtr, mtr, uDegToRad( self.rotateY ) );
+                        mat4.rotateZ( mtr, mtr, uDegToRad( self.rotateZ ) );
+                        mat4.scale( mtr, mtr, [ self.scaleX, self.scaleY, self.scaleZ ] );
+                        self.updated = true;
                     }
                 },
 
@@ -807,10 +843,14 @@
                             self.x = 0, self.y = 0, self.z = 0,
                             self.width = 1, self.height = 1,
                             self.scaleX = 1, self.scaleY = 1, self.scaleZ = 1,
-                            self.rotateX = 0, self.rotateY = 0, self.rotateZ = 0;
+                            self.rotateX = 0, self.rotateY = 0, self.rotateZ = 0,
+
+                            // matrix
+                            self.updated = false,
+                            self.mtr = mat4.create()
                     },
 
-                        Sprite.prototype = { data : prototype.data, tr : prototype.tr },
+                        Sprite.prototype = { data : prototype.data, tr : prototype.tr, update : prototype.update },
 
                         //----------------------------------------------------------------------------------------------------------------------------------------------//
 
