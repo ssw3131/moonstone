@@ -72,7 +72,9 @@
                 browser : browser, browserVer : bv,
                 os : os, osVer : osv,
                 touchBool : W.ontouchstart !== undefined,
-                wheelEvent : browser == "firefox" ? "DOMMouseScroll" : "mousewheel"
+                wheelEvent : browser == "firefox" ? "DOMMouseScroll" : "mousewheel",
+                requestAnimationFrame : (function(){ return  W.requestAnimationFrame || W.webkitRequestAnimationFrame || W.mozRequestAnimationFrame || W.oRequestAnimationFrame || function( $loop ){ return W.setTimeout( $loop, 16 ) }; })(),
+                cancelAnimationFrame : (function(){ return W.cancelAnimationFrame || W.webkitCancelAnimationFrame || W.mozCancelAnimationFrame || W.oCancelAnimationFrame || function( $id ){ W.clearTimeout( $id ); }; })()
             };
         })(),
 
@@ -194,34 +196,33 @@
                 })(),
 
                 loop : (function(){
-                    var r, list, timer, stats, raf, caf, update;
-                    list = ( r = _jsCore.adManager( start, end ) ).getList(),
+                    var dtt = DkGl.Detector, r, list, timer, stats, raf, caf, update;
 
-                        raf = (function(){ return  W.requestAnimationFrame || W.webkitRequestAnimationFrame || W.mozRequestAnimationFrame || W.oRequestAnimationFrame || function( $loop ){ return W.setTimeout( $loop, 16 ) }; })(),
-                        caf = (function(){ return W.cancelAnimationFrame || W.webkitCancelAnimationFrame || W.mozCancelAnimationFrame || W.oCancelAnimationFrame || function( $id ){ W.clearTimeout( $id ); }; })();
+                    list = ( r = _jsCore.adManager( start, end ) ).getList(),
+                        raf = dtt.requestAnimationFrame, caf = dtt.cancelAnimationFrame;
 
                     function start(){ timer = raf( update ); }
 
                     function end(){ caf( timer ); }
 
                     // stats
-                    if( W.Stats )
-                        stats = new Stats(), stats.setMode( 0 ), stats.domElement.style.cssText = "position : fixed; z-index : 2;", Doc.body.appendChild( stats.domElement ),
-                            update = function(){
-                                stats ? stats.begin() : null;
-
-                                var i = list.length;
-                                while( i-- ) list[ i ].value( list[ i ].key );
-                                timer = raf( update );
-
-                                stats ? stats.end() : null;
-                            }
-                    else
-                        update = function(){
-                            var i = list.length;
-                            while( i-- ) list[ i ].value( list[ i ].key );
-                            timer = raf( update );
-                        }
+//                    if( W.Stats )
+//                        stats = new Stats(), stats.setMode( 0 ), stats.domElement.style.cssText = "position : fixed; z-index : 2;", Doc.body.appendChild( stats.domElement ),
+//                            update = function(){
+//                                stats ? stats.begin() : null;
+//
+//                                var i = list.length;
+//                                while( i-- ) list[ i ].value( list[ i ].key );
+//                                timer = raf( update );
+//
+//                                stats ? stats.end() : null;
+//                            }
+//                    else
+                    update = function(){
+                        var i = list.length;
+                        while( i-- ) list[ i ].value( list[ i ].key );
+                        timer = raf( update );
+                    }
 
                     return r;
                 })(),
@@ -404,7 +405,6 @@
                 vboIndexObj : {},
                 vboTextureObj : {},
                 mtrP : null,
-//                mtrMV : null,
                 mtrC : null,
                 children : []
             }
@@ -430,7 +430,8 @@
                 var gl, canvas = _glCore.canvas;
                 _glCore.gl = gl = canvas.getContext( "webgl" ) || canvas.getContext( "experimental-webgl" ) || canvas.getContext( "webkit-3d" ) || canvas.getContext( "moz-webgl" ),
                     gl ? null : _jsCore.throwError( "DkGl : 이 브라우저에서는 WebGL은 사용이 불가능 합니다." );
-//                gl.enable( gl.DEPTH_TEST );
+                gl.enable( gl.DEPTH_TEST );
+                gl.depthFunc( gl.LEQUAL )
                 if( W.WebGLDebugUtils ) gl = WebGLDebugUtils.makeDebugContext( gl );
             }
 
@@ -520,7 +521,7 @@
 
             function initMatrix(){
                 var mat4 = DkGl.mat4;
-                _glCore.mtrP = DkGl.mat4.create(), /*_glCore.mtrMV = DkGl.mat4.create(), */_glCore.mtrC = DkGl.mat4.create()
+                _glCore.mtrP = mat4.create(), _glCore.mtrC = mat4.create()
             }
         })(),
 
@@ -537,14 +538,16 @@
         //----------------------------------------------------------------------------------------------------------------------------------------------//
         // view
         _initView = function(){
-            var loop,
-                ut = DkGl.util, uDegToRad = ut.degToRad,
+            var ut = DkGl.util, uDegToRad = ut.degToRad,
+                dNow = Date.now,
+                dtt = DkGl.Detector, raf = dtt.requestAnimationFrame,
+                stats, render,
                 gc = _glCore, gl = gc.gl, canvas = gc.canvas,
-                mtrP = gc.mtrP,
                 vboPosObj = gc.vboPosObj, vboIndexObj = gc.vboIndexObj, vboTextureObj = gc.vboTextureObj,
+                p, geoType, posVbo, indexVbo, textureVbo,
+                mtrP = gc.mtrP,
                 mat4 = DkGl.mat4,
-                mtrNull = mat4.create(), mtrParent = mat4.create(),
-                p, geoType, posVbo, indexVbo, textureVbo;
+                mtrS = mat4.create(), mtrCopy = mat4.create();
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -562,6 +565,7 @@
                     mat4.translate( mtrP, mtrP, [ -w / 2, h / 2, -251 / 280 * h ] ),
 //                    mat4.translate( mtrP, mtrP, [ 0, 0, -251 / 280 * h ] ),
                     mat4.rotateX( mtrP, mtrP, uDegToRad( 180 ) ),
+//                    mat4.scale( mtrP, mtrP, [ 1, -1, 1 ] ),
 
                     // uniform
                     list = gc.programObj.getList(), i = list.length;
@@ -571,23 +575,42 @@
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
 
-            (function(){
-                var dNow = Date.now, oldTime = dNow();
-                loop = function(){
-                    var cTime = dNow();
+            ut.loop.add( "DkGl", loop );
+            function loop(){
+                var cTime = dNow(), oldTime = loop.oldTime;
 
-                    if( cTime - oldTime > 16 ){
-                        // animation
-                        // 서드파티
-                        draw();
-                        drawMouse();
+                if( cTime - oldTime >= 16 ){
+                    // animation
+                    // 서드파티
+                    oldTime = cTime;
+                }
+            }
 
-                        oldTime = cTime;
-                    }
-                },
-                    ut.loop.add( "DkGl", loop );
-//                setTimeout( function(){ ut.loop.del( "DkGl" ); }, 500 );
-            })()
+            loop.oldTime = dNow();
+
+            //----------------------------------------------------------------------------------------------------------------------------------------------//
+
+            render = function(){
+                var cTime = dNow();
+                cTime - render.oldTime >= 16 ? ( draw(), drawMouse(), render.oldTime = cTime ) : null,
+                    raf( render );
+            }
+
+            if( W.Stats )
+                stats = new Stats(), stats.setMode( 0 ), stats.domElement.style.cssText = "position : fixed; z-index : 2;", Doc.body.appendChild( stats.domElement ),
+                    render = (function(){
+                        var oldRender = render;
+                        return function(){
+                            stats.begin(),
+                                oldRender(),
+                                stats.end();
+                        }
+                    })();
+            render.oldTime = dNow();
+
+            raf( render );
+
+//            setTimeout( function(){ render = function(){} }, 1000 );
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -601,17 +624,16 @@
             }
 
             function drawCall( $children, $mtrParent ){
-                var list = $children, i, leng, sprite, material, aArr, j, mtr;
+                var list = $children, i, leng = list.length, sprite, material, aArr, j, geoChange = false;
 
-                for( i = 0, leng = list.length; i < leng; i++ ){
+                for( i = 0; i < leng; i++ ){
                     sprite = list[ i ], material = sprite.material;
-
-                    if( geoType != sprite.geoType ){
-                        geoType = sprite.geoType, posVbo = vboPosObj[ geoType ], indexVbo = vboIndexObj[ geoType ], textureVbo = vboTextureObj[ geoType ];
-                    }
 
                     if( p != material.program ){
                         p = material.program;
+
+                        if( p.name == "texture" && material.texture == null ) return;
+
                         gl.useProgram( p );
 
                         aArr = p.aArr, j = aArr.length;
@@ -619,25 +641,23 @@
                             gl.enableVertexAttribArray( p[ aArr[ j ] ] );
 
                         // buffer
-                        gl.bindBuffer( gl.ARRAY_BUFFER, posVbo );
-                        gl.vertexAttribPointer( p.aVertexPosition, posVbo.size, gl.FLOAT, false, 0, 0 );
+                        if( geoType != sprite.geoType ){
+                            geoChange = true;
+                            geoType = sprite.geoType, posVbo = vboPosObj[ geoType ], indexVbo = vboIndexObj[ geoType ], textureVbo = vboTextureObj[ geoType ];
+                        }
 
-                        gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, indexVbo );
+                        if( geoChange || p.name == "texture" ){
+                            gl.bindBuffer( gl.ARRAY_BUFFER, posVbo );
+                            gl.vertexAttribPointer( p.aVertexPosition, posVbo.size, gl.FLOAT, false, 0, 0 );
 
-                        if( p.name == "texture" ){
+                            gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, indexVbo );
+
                             gl.bindBuffer( gl.ARRAY_BUFFER, textureVbo );
                             gl.vertexAttribPointer( p.aTextureCoord, textureVbo.size, gl.FLOAT, false, 0, 0 );
                             gl.activeTexture( gl.TEXTURE0 );
                             gl.uniform1i( p.samplerUniform, 0 );
                         }
                     }
-
-                    // matrix
-                    mtr = getMtr( sprite );
-                    if ( $mtrParent ) mat4.multiply( mtr, $mtrParent, mtr );
-                    mat4.copy( mtrParent, mtr );
-                    mat4.scale( mtr, mtr, [ sprite.width, sprite.height, 1 ] );
-                    gl.uniformMatrix4fv( p.uMatrixMV, false, mtr );
 
                     if( p.name == "color" ){
                         gl.uniform3fv( p.uColor, [ material.r / 256, material.g / 256, material.b / 256 ] );
@@ -646,18 +666,20 @@
                         gl.bindTexture( gl.TEXTURE_2D, material.texture );
                     }
 
+                    // matrix
+                    sprite.updated ? null : sprite.update();
+                    mat4.copy( mtrS, sprite.mtr );
+                    if( $mtrParent ) mat4.multiply( mtrS, $mtrParent, mtrS );
+                    mat4.copy( mtrCopy, mtrS );
+                    mat4.scale( mtrS, mtrS, [ sprite.width, sprite.height, 1 ] );
+                    gl.uniformMatrix4fv( p.uMatrixMV, false, mtrS );
+
                     // draw
                     gl.drawElements( gl.TRIANGLES, indexVbo.num, gl.UNSIGNED_SHORT, 0 );
 
                     // children
-                    sprite.children.length > 0 ? drawCall( sprite.children, mtrParent ) : null;
+                    sprite.children.length > 0 ? drawCall( sprite.children, mtrCopy ) : null;
                 }
-            }
-
-            function getMtr( $sprite ){
-                $sprite.updated ? null : $sprite.update();
-                mat4.copy( mtrNull, $sprite.mtr );
-                return mtrNull;
             }
 
             //----------------------------------------------------------------------------------------------------------------------------------------------//
