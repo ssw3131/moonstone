@@ -554,7 +554,7 @@
             ut.resize.add( "DkGl", resize ), resize();
 
             function resize(){
-                log( "DkGl : resize" );
+//                log( "DkGl : resize" );
                 var w, h, list, i, p;
 
                 gl.width = w = canvas.width, gl.height = h = canvas.height,
@@ -911,9 +911,9 @@
                                 case "texture" :
                                     return new TextureMaterial();
                                 case "texture2" :
-                                    return log( "material texture2" );
+//                                    return log( "material texture2" );
                                 case "sheet" :
-                                    return log( "material sheet" );
+//                                    return log( "material sheet" );
                             }
                         }
                 })()
